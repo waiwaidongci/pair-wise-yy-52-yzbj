@@ -7,6 +7,7 @@ const open = ref(false)
 const nav = [
   { to: '/', label: '状态看板', icon: 'i-heroicons-chart-bar-square' },
   { to: '/permits', label: '作业许可', icon: 'i-heroicons-clipboard-document-check' },
+  { to: '/reconcile', label: '对账台', icon: 'i-heroicons-arrow-path-rounded-square' },
   { to: '/devices', label: '隔离与锁定', icon: 'i-heroicons-lock-closed' },
   { to: '/audit', label: '审计记录', icon: 'i-heroicons-clock' },
 ]
@@ -26,8 +27,8 @@ const nav = [
         <UButton class="mobile-menu" icon="i-heroicons-bars-3" color="gray" variant="ghost" @click="open = !open" />
         <div><b>运行中 · A 区集电线路检修</b><span class="muted desktop-only">值班负责人：李骁 · 2026-09-29 16:48</span></div>
         <span class="flex-1" />
-        <UBadge :color="store.connection === '在线' ? 'green' : 'amber'" variant="subtle">{{ store.connection }}</UBadge>
-        <UButton v-if="store.pendingRetry" size="sm" color="amber" variant="soft" @click="store.retryPending">重试 {{ store.pendingRetry }} 项</UButton>
+        <UButton size="sm" :color="store.connection === '在线' ? 'green' : 'amber'" variant="soft" :icon="store.connection === '在线' ? 'i-heroicons-wifi' : 'i-heroicons-wifi'" @click="store.connection === '在线' ? store.markOffline() : store.markOnline()">{{ store.connection }} · {{ store.connection === '在线' ? '点击模拟断网' : '点击恢复' }}</UButton>
+        <UButton v-if="store.pendingRetry" size="sm" color="amber" variant="solid" icon="i-heroicons-arrow-path" @click="navigateTo('/reconcile')">待补传 {{ store.pendingRetry }} 项，去对账</UButton>
         <UButton icon="i-heroicons-plus" color="primary" @click="navigateTo('/permits?new=1')">新建许可</UButton>
       </header>
       <main class="main"><slot /></main>

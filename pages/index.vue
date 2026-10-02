@@ -10,8 +10,9 @@ const { reconnect } = useRealtime((event) => {
 const counts = computed(() => ({
   active: store.permits.filter((item) => ['执行中', '待结束'].includes(item.status)).length,
   pending: store.permits.filter((item) => ['待复核', '待执行'].includes(item.status)).length,
-  conflicts: store.permits.filter((item) => item.reviewRequired).length,
+  conflicts: store.permits.filter((item) => item.reviewRequired || item.acceptanceInvalid || (item.conflicts?.length ?? 0) > 0).length,
 }))
+const openReconcile = computed(() => store.permits.some((p) => p.conflicts?.length || p.acceptanceInvalid))
 </script>
 
 <template>
@@ -21,6 +22,8 @@ const counts = computed(() => ({
       <div class="inline wrap"><UButton color="gray" variant="outline" icon="i-heroicons-arrow-path" @click="reconnect">检查连接</UButton><UButton color="primary" icon="i-heroicons-document-plus" @click="navigateTo('/permits?new=1')">申请作业许可</UButton></div>
     </div>
     <UAlert v-if="store.latestAlert" class="mb-4" color="amber" variant="soft" icon="i-heroicons-exclamation-triangle" title="实时冲突提醒" :description="store.latestAlert" :actions="[{ label: '协调并确认', click: store.acceptAlert }]" />
+    <UAlert v-if="store.connection === '重连中'" class="mb-4" color="amber" variant="soft" icon="i-heroicons-wifi" title="端侧断网" description="现场许可步骤与隔离措施正在本地记账，线路恢复后逐项对账补传，不影响现场作业。" :actions="[{ label: '恢复线路并对账', click: () => { store.markOnline(); navigateTo('/reconcile') } }]" />
+    <UAlert v-else-if="openReconcile" class="mb-4" color="red" variant="soft" icon="i-heroicons-arrow-path-rounded-square" title="对账后存在待复核事项" description="冲突字段留待复核，部分现场验收结论已失效需重新确认。" :actions="[{ label: '前往对账台', click: () => navigateTo('/reconcile') }]" />
     <section class="grid metrics">
       <article class="panel metric"><span>执行中许可</span><strong>{{ counts.active }}</strong><small>3 个班组在场</small></article>
       <article class="panel metric"><span>待复核 / 待执行</span><strong>{{ counts.pending }}</strong><small>最早 18:00 开工</small></article>

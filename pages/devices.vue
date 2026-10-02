@@ -3,7 +3,13 @@ import { useOperationsStore } from '~/stores/operations'
 
 const store = useOperationsStore()
 const selectedDevice = ref('WTG-03')
-const selectedPoints = computed(() => store.permits.flatMap((permit) => permit.isolationPoints).filter((point) => point.device.includes(selectedDevice.value)))
+const selectedPoints = computed(() =>
+  store.permits.flatMap((permit) =>
+    permit.isolationPoints
+      .filter((point) => point.device.includes(selectedDevice.value))
+      .map((point) => ({ permitId: permit.id, point })),
+  ),
+)
 const devices = [
   { id: 'WTG-03', name: '3 号风力发电机组', state: '检修隔离', load: '0 kW', points: 3, crew: '机务二班' },
   { id: 'LINE-A2', name: 'A2 集电线路', state: '待隔离', load: '0.8 MW', points: 3, crew: '线路一班' },
@@ -14,11 +20,12 @@ const devices = [
 
 <template>
   <div class="page">
-    <div class="head"><div><p class="eyebrow">LOCKOUT / TAGOUT</p><h1 class="page-title">设备隔离与锁定点</h1><p class="muted">统一维护设备隔离点、锁具、验电步骤和跨班组占用状态。</p></div><UButton color="primary" icon="i-heroicons-plus">登记隔离点</UButton></div>
+    <div class="head"><div><p class="eyebrow">LOCKOUT / TAGOUT</p><h1 class="page-title">设备隔离与锁定点</h1><p class="muted">统一维护设备隔离点、锁具、验电步骤和跨班组占用状态；断网时隔离措施变更本地记账，恢复后逐项对账。</p></div><UButton color="primary" icon="i-heroicons-plus">登记隔离点</UButton></div>
+    <UAlert v-if="store.connection === '重连中'" color="amber" variant="soft" icon="i-heroicons-exclamation-triangle" title="端侧断网" description="隔离点执行/解除将记入本地待补传队列，线路恢复后在对账台逐项补传。" class="mb-4" />
     <div class="device-grid">
       <article v-for="device in devices" :key="device.id" class="panel device" :class="{ active: selectedDevice === device.id }" @click="selectedDevice = device.id"><div class="inline justify-between"><UBadge variant="subtle">{{ device.id }}</UBadge><UBadge :color="device.state === '运行' ? 'green' : device.state === '检修隔离' ? 'red' : 'amber'" variant="subtle">{{ device.state }}</UBadge></div><h2>{{ device.name }}</h2><div class="kv"><span>当前负荷</span><b>{{ device.load }}</b></div><div class="kv"><span>隔离点</span><b>{{ device.points }} 个</b></div><div class="kv"><span>责任班组</span><b>{{ device.crew }}</b></div></article>
     </div>
-    <section class="grid lower"><article class="panel p-4"><h2>{{ selectedDevice }} · 隔离检查单</h2><div v-for="point in selectedPoints" :key="point.id" class="point"><div class="lock-icon"><UIcon name="i-heroicons-lock-closed" /></div><div><b>{{ point.label }}</b><small>{{ point.type }} · {{ point.id }}</small></div><UBadge :color="point.state === '已隔离' ? 'green' : 'amber'" variant="subtle">{{ point.state }}</UBadge><UButton size="xs" variant="ghost">操作记录</UButton></div><UAlert v-if="!selectedPoints.length" color="gray" title="该设备暂无隔离点" description="可在许可中新建隔离点并关联设备。" /></article><article class="panel p-4"><h2>交叉冲突检测</h2><UAlert color="red" variant="soft" title="LINE-A2 与 BOX-12 共用母线隔离边界" description="两个作业在同一时间窗内涉及 BUS-A，需由值班负责人确认先后顺序与交接条件。" /><h3>锁定器具台账</h3><div class="tool"><span>LK-2107</span><b>WTG-03 · 周野</b></div><div class="tool"><span>LK-2118</span><b>LINE-A2 · 待领用</b></div><div class="tool"><span>GND-042</span><b>17 号杆 · 谭勇</b></div><UButton block color="primary" class="mt-4" icon="i-heroicons-check-badge">完成隔离确认</UButton></article></section>
+    <section class="grid lower"><article class="panel p-4"><h2>{{ selectedDevice }} · 隔离检查单</h2><div v-for="({ permitId, point }) in selectedPoints" :key="point.id" class="point"><div class="lock-icon"><UIcon name="i-heroicons-lock-closed" /></div><div><b>{{ point.label }}</b><small>{{ point.type }} · {{ point.id }} · {{ permitId }}</small></div><UBadge :color="point.state === '已隔离' ? 'green' : point.state === '已恢复' ? 'blue' : 'amber'" variant="subtle">{{ point.state }}</UBadge><UButton size="xs" :color="point.state === '已隔离' ? 'gray' : 'primary'" variant="soft" @click="store.togglePointState(permitId, point.id)">{{ point.state === '已隔离' ? '解除隔离' : '执行隔离' }}</UButton></div><UAlert v-if="!selectedPoints.length" color="gray" title="该设备暂无隔离点" description="可在许可中新建隔离点并关联设备。" /></article><article class="panel p-4"><h2>交叉冲突检测</h2><UAlert color="red" variant="soft" title="LINE-A2 与 BOX-12 共用母线隔离边界" description="两个作业在同一时间窗内涉及 BUS-A，需由值班负责人确认先后顺序与交接条件。" /><h3>锁定器具台账</h3><div class="tool"><span>LK-2107</span><b>WTG-03 · 周野</b></div><div class="tool"><span>LK-2118</span><b>LINE-A2 · 待领用</b></div><div class="tool"><span>GND-042</span><b>17 号杆 · 谭勇</b></div><UButton block color="primary" class="mt-4" icon="i-heroicons-check-badge">完成隔离确认</UButton></article></section>
   </div>
 </template>
 
