@@ -4,13 +4,14 @@ import { useOperationsStore } from '~/stores/operations'
 const store = useOperationsStore()
 const keyword = ref('')
 const filtered = computed(() => store.audit.filter((event) => `${event.actor}${event.action}${event.target}${event.detail}`.includes(keyword.value)))
+const chips = ['对账', '验收', '本地记录', '冲突裁决', '旧修订']
 </script>
 
 <template>
   <div class="page">
-    <div class="head"><div><p class="eyebrow">不可覆盖的操作记录</p><h1 class="page-title">审计与交接时间线</h1><p class="muted">隔离点变化、许可签署、附件补传、失败重试和现场确认完整留痕。</p></div><UButton color="gray" variant="outline" icon="i-heroicons-arrow-down-tray">导出审计包</UButton></div>
+    <div class="head"><div><p class="eyebrow">不可覆盖的操作记录</p><h1 class="page-title">审计与交接时间线</h1><p class="muted">隔离点变化、许可签署、本地记录、对账接收/冲突、验收重新确认与失败重试完整留痕；对账续传按固定日志 ID 幂等，不重复生成。</p></div><UButton color="gray" variant="outline" icon="i-heroicons-arrow-down-tray">导出审计包</UButton></div>
     <section class="panel p-4">
-      <div class="inline justify-between wrap mb-4"><UInput v-model="keyword" icon="i-heroicons-magnifying-glass" placeholder="搜索人员、许可或操作" class="search" /><div class="inline"><UBadge color="gray">共 {{ filtered.length }} 条</UBadge><UButton size="sm" variant="ghost" icon="i-heroicons-funnel">筛选</UButton></div></div>
+      <div class="inline justify-between wrap mb-4"><UInput v-model="keyword" icon="i-heroicons-magnifying-glass" placeholder="搜索人员、许可或操作" class="search" /><div class="inline wrap"><span v-for="chip in chips" :key="chip"><UButton size="xs" :variant="keyword === chip ? 'solid' : 'outline'" color="gray" @click="keyword = keyword === chip ? '' : chip">{{ chip }}</UButton></span><UBadge color="gray">共 {{ filtered.length }} 条</UBadge></div></div>
       <div class="timeline"><div v-for="event in filtered" :key="event.id" class="event"><time>{{ event.time }}</time><i></i><div><div class="inline wrap"><b>{{ event.actor }}</b><UBadge size="xs" variant="subtle">{{ event.action }}</UBadge><span class="target">{{ event.target }}</span></div><p>{{ event.detail }}</p></div></div></div>
     </section>
   </div>

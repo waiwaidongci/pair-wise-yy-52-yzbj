@@ -11,6 +11,8 @@ const counts = computed(() => ({
   active: store.permits.filter((item) => ['执行中', '待结束'].includes(item.status)).length,
   pending: store.permits.filter((item) => ['待复核', '待执行'].includes(item.status)).length,
   conflicts: store.permits.filter((item) => item.reviewRequired).length,
+  localPending: store.pendingRetry,
+  invalidAcceptance: store.permits.filter((item) => item.acceptance && !item.acceptance.valid).length,
 }))
 </script>
 
@@ -20,18 +22,21 @@ const counts = computed(() => ({
       <div><p class="eyebrow">现场安全运行</p><h1 class="page-title">隔离与作业许可总览</h1><p class="muted">设备状态、隔离锁定、跨班组冲突和许可流转集中于同一视图。</p></div>
       <div class="inline wrap"><UButton color="gray" variant="outline" icon="i-heroicons-arrow-path" @click="reconnect">检查连接</UButton><UButton color="primary" icon="i-heroicons-document-plus" @click="navigateTo('/permits?new=1')">申请作业许可</UButton></div>
     </div>
-    <UAlert v-if="store.latestAlert" class="mb-4" color="amber" variant="soft" icon="i-heroicons-exclamation-triangle" title="实时冲突提醒" :description="store.latestAlert" :actions="[{ label: '协调并确认', click: store.acceptAlert }]" />
+    <UAlert v-if="store.connection === '离线'" class="mb-4" color="red" variant="soft" icon="i-heroicons-signal-slash" title="端侧断网：许可步骤与隔离措施仅记录在本地" :description="`本地待提交记录 ${counts.localPending} 项；线路恢复后到断网对账中心与调度端逐项核对，不会整份替换双方都碰过的许可。`" :actions="[{ label: '前往对账中心', click: () => navigateTo('/sync') }]" />
+    <UAlert v-else-if="counts.localPending" class="mb-4" color="amber" variant="soft" icon="i-heroicons-arrows-right-left" title="线路已恢复，存在待对账许可" :description="`${counts.localPending} 项本地记录待与调度端逐项对账；冲突字段将挂起待复核。`" :actions="[{ label: '开始逐项对账', click: () => navigateTo('/sync') }]" />
+    <UAlert v-else-if="counts.invalidAcceptance" class="mb-4" color="amber" variant="soft" icon="i-heroicons-exclamation-triangle" title="有验收结论因调度端动作失效" :description="`${counts.invalidAcceptance} 张许可的验收结论需重新确认。`" :actions="[{ label: '去重新确认', click: () => navigateTo('/sync') }]" />
+    <UAlert v-if="store.latestAlert && store.connection === '在线'" class="mb-4" color="amber" variant="soft" icon="i-heroicons-exclamation-triangle" title="实时冲突提醒" :description="store.latestAlert" :actions="[{ label: '协调并确认', click: store.acceptAlert }]" />
     <section class="grid metrics">
       <article class="panel metric"><span>执行中许可</span><strong>{{ counts.active }}</strong><small>3 个班组在场</small></article>
       <article class="panel metric"><span>待复核 / 待执行</span><strong>{{ counts.pending }}</strong><small>最早 18:00 开工</small></article>
-      <article class="panel metric"><span>隔离冲突</span><strong class="danger">{{ counts.conflicts }}</strong><small>必须复核后推进</small></article>
-      <article class="panel metric"><span>设备在线</span><strong>{{ data?.onlineDevices }}/{{ data?.totalDevices }}</strong><small>平均风速 {{ data?.windSpeed }} m/s</small></article>
+      <article class="panel metric"><span>隔离冲突 / 验收失效</span><strong class="danger">{{ counts.conflicts }} / {{ counts.invalidAcceptance }}</strong><small>冲突字段待复核，失效验收待重认</small></article>
+      <article class="panel metric"><span>端侧待提交</span><strong :class="{ danger: counts.localPending }">{{ counts.localPending }}</strong><small>{{ store.connection === '离线' ? '断网本地记录中' : '恢复后可逐项对账' }}</small></article>
     </section>
     <section class="grid main-grid">
       <article class="panel p-4">
         <div class="panel-head"><div><h2>当前作业状态</h2><p class="muted">按风险和开始时间排序</p></div><UBadge color="blue" variant="subtle">版本 r{{ data?.revision }}</UBadge></div>
         <div class="table-scroll"><table class="data-table"><thead><tr><th>许可 / 作业</th><th>设备</th><th>负责人</th><th>时间窗</th><th>状态</th><th></th></tr></thead><tbody>
-          <tr v-for="permit in store.permits" :key="permit.id"><td><b>{{ permit.id }}</b><small class="block muted">{{ permit.title }}</small></td><td>{{ permit.device }}</td><td>{{ permit.owner }} · {{ permit.crew }}</td><td>{{ permit.window }}</td><td><UBadge :color="permit.reviewRequired ? 'red' : permit.status === '执行中' ? 'green' : 'amber'" variant="subtle">{{ permit.reviewRequired ? '待复核冲突' : permit.status }}</UBadge></td><td><UButton size="xs" variant="ghost" @click="navigateTo(`/permits?id=${permit.id}`)">进入</UButton></td></tr>
+          <tr v-for="permit in store.permits" :key="permit.id"><td><b>{{ permit.id }}</b><small class="block muted">{{ permit.title }}</small></td><td>{{ permit.device }}</td><td>{{ permit.owner }} · {{ permit.crew }}</td><td>{{ permit.window }}</td><td><UBadge :color="permit.acceptance && !permit.acceptance.valid ? 'amber' : permit.reviewRequired || permit.reconcileStatus === '部分字段待复核' ? 'red' : permit.reconcileStatus === '本地待对账' ? 'red' : permit.status === '执行中' ? 'green' : 'amber'" variant="subtle">{{ permit.acceptance && !permit.acceptance.valid ? '验收失效待重认' : permit.reconcileStatus ?? (permit.reviewRequired ? '待复核冲突' : permit.status) }}</UBadge></td><td><UButton size="xs" variant="ghost" @click="navigateTo(`/permits?id=${permit.id}`)">进入</UButton></td></tr>
         </tbody></table></div>
       </article>
       <aside class="grid side-grid">

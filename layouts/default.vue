@@ -8,6 +8,7 @@ const nav = [
   { to: '/', label: '状态看板', icon: 'i-heroicons-chart-bar-square' },
   { to: '/permits', label: '作业许可', icon: 'i-heroicons-clipboard-document-check' },
   { to: '/devices', label: '隔离与锁定', icon: 'i-heroicons-lock-closed' },
+  { to: '/sync', label: '断网对账', icon: 'i-heroicons-arrows-right-left' },
   { to: '/audit', label: '审计记录', icon: 'i-heroicons-clock' },
 ]
 </script>
@@ -26,8 +27,10 @@ const nav = [
         <UButton class="mobile-menu" icon="i-heroicons-bars-3" color="gray" variant="ghost" @click="open = !open" />
         <div><b>运行中 · A 区集电线路检修</b><span class="muted desktop-only">值班负责人：李骁 · 2026-09-29 16:48</span></div>
         <span class="flex-1" />
-        <UBadge :color="store.connection === '在线' ? 'green' : 'amber'" variant="subtle">{{ store.connection }}</UBadge>
-        <UButton v-if="store.pendingRetry" size="sm" color="amber" variant="soft" @click="store.retryPending">重试 {{ store.pendingRetry }} 项</UButton>
+        <UBadge :color="store.connection === '在线' ? 'green' : 'red'" variant="subtle">{{ store.connection === '在线' ? '在线' : '断网本地记录' }}</UBadge>
+        <UButton v-if="store.pendingRetry" size="sm" :color="store.snapshotLoaded ? 'amber' : 'red'" variant="soft" icon="i-heroicons-arrows-right-left" @click="navigateTo('/sync')">
+          {{ store.snapshotLoaded ? `对账 ${store.pendingRetry} 项` : `待提交 ${store.pendingRetry} 项` }}
+        </UButton>
         <UButton icon="i-heroicons-plus" color="primary" @click="navigateTo('/permits?new=1')">新建许可</UButton>
       </header>
       <main class="main"><slot /></main>

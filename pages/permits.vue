@@ -10,6 +10,20 @@ const form = reactive({ title: '', device: '', crew: '电气一班', owner: '孙
 const selected = computed(() => store.permits.find((item) => item.id === selectedId.value) ?? store.permits[0])
 const completed = computed(() => selected.value ? Math.round(selected.value.steps.filter((step) => step.done).length / selected.value.steps.length * 100) : 0)
 const statusIndex = computed(() => ['待复核', '待执行', '执行中', '待结束', '待关闭', '已完成'].indexOf(selected.value?.status ?? ''))
+const reconfirmDraft = ref('')
+
+const reconcileColor: Record<string, string> = {
+  本地待对账: 'red',
+  已对账无争议: 'green',
+  部分字段待复核: 'red',
+  验收失效待重新确认: 'amber',
+}
+
+function submitReconfirm() {
+  if (!selected.value || !reconfirmDraft.value.trim()) return
+  store.reconfirmAcceptance(selected.value.id, reconfirmDraft.value.trim())
+  reconfirmDraft.value = ''
+}
 
 function createPermit() {
   if (!form.title.trim() || !form.device.trim()) return
@@ -30,19 +44,28 @@ function createPermit() {
     <div class="head"><div><p class="eyebrow">许可全生命周期</p><h1 class="page-title">作业许可证</h1><p class="muted">从申请、复核到执行、结束和关闭，每一步留存负责人、时间、附件与现场确认。</p></div><UButton icon="i-heroicons-plus" color="primary" @click="modal = true">新建许可</UButton></div>
     <div class="permit-layout">
       <aside class="panel permit-list">
-        <button v-for="permit in store.permits" :key="permit.id" :class="{ active: permit.id === selectedId }" @click="selectedId = permit.id"><span><b>{{ permit.id }}</b><small>{{ permit.title }}</small></span><UBadge :color="permit.reviewRequired ? 'red' : 'amber'" variant="subtle">{{ permit.reviewRequired ? '冲突' : permit.status }}</UBadge></button>
+        <button v-for="permit in store.permits" :key="permit.id" :class="{ active: permit.id === selectedId }" @click="selectedId = permit.id"><span><b>{{ permit.id }}</b><small>{{ permit.title }}</small></span><UBadge :color="permit.reconcileStatus ? reconcileColor[permit.reconcileStatus] : permit.reviewRequired ? 'red' : 'amber'" variant="subtle">{{ permit.reconcileStatus ?? (permit.reviewRequired ? '冲突' : permit.status) }}</UBadge></button>
       </aside>
       <section v-if="selected" class="grid detail-grid">
         <article class="panel p-4">
-          <div class="detail-head"><div><small class="muted">{{ selected.id }} · 修订 r{{ selected.revision }}</small><h2>{{ selected.title }}</h2><p>{{ selected.device }} · {{ selected.window }}</p></div><UBadge size="lg" :color="selected.reviewRequired ? 'red' : 'green'" variant="subtle">{{ selected.reviewRequired ? '待复核' : selected.status }}</UBadge></div>
+          <div class="detail-head"><div><small class="muted">{{ selected.id }} · 修订 r{{ selected.revision }}<template v-if="selected.legacy"> · <UBadge color="gray" size="xs" variant="subtle">旧修订回填</UBadge> <code class="legacy-idx">{{ selected.legacyIndex }}</code></template></small><h2>{{ selected.title }}</h2><p>{{ selected.device }} · {{ selected.window }}</p></div><UBadge size="lg" :color="selected.reconcileStatus ? reconcileColor[selected.reconcileStatus] : selected.reviewRequired ? 'red' : 'green'" variant="subtle">{{ selected.reconcileStatus ?? (selected.reviewRequired ? '待复核' : selected.status) }}</UBadge></div>
           <div class="flow"><div v-for="(step,index) in ['申请','复核','执行','结束','关闭']" :key="step" :class="{ done: index <= statusIndex, current: index === statusIndex }"><i>{{ index + 1 }}</i><span>{{ step }}</span></div></div>
           <UAlert v-if="selected.reviewRequired" color="red" variant="soft" title="设备状态变化触发复核" description="共用隔离点或相关设备状态已发生变化，关闭该许可前必须由值班负责人重新确认。" />
+          <UAlert v-if="selected.acceptance && !selected.acceptance.valid" class="mt-3" color="red" variant="soft" title="验收结论已失效：调度端动作需重新确认" :description="`失效原因：${selected.acceptance.invalidReason}。原结论「${selected.acceptance.conclusion}」（${selected.acceptance.confirmedBy} · ${selected.acceptance.confirmedAt}）不再有效。`">
+            <template #actions>
+              <div class="inline"><UInput v-model="reconfirmDraft" size="sm" placeholder="重新确认的验收结论" class="reconfirm-input" /><UButton size="sm" color="red" :disabled="!reconfirmDraft.trim()" @click="submitReconfirm">重新确认</UButton></div>
+            </template>
+          </UAlert>
+          <UAlert v-else-if="selected.acceptance?.valid" class="mt-3" color="green" variant="soft" title="验收结论有效" :description="`${selected.acceptance.conclusion}（${selected.acceptance.confirmedBy} · ${selected.acceptance.confirmedAt}）`" />
+          <UAlert v-if="store.connection === '离线'" class="mt-3" color="amber" variant="soft" title="端侧断网：本地记录模式" description="勾选步骤或切换隔离点将记在端侧，线路恢复后到「断网对账」与调度端逐项核对。" />
           <h3>操作步骤</h3>
           <div v-for="step in selected.steps" :key="step.id" class="step"><UCheckbox :model-value="step.done" @update:model-value="store.toggleStep(selected.id, step.id)" /><div><b :class="{ completed: step.done }">{{ step.text }}</b><small>责任人 {{ step.owner }} · {{ step.evidence || '尚未上传证据' }}</small></div><UButton size="xs" variant="ghost" icon="i-heroicons-camera">证据</UButton></div>
           <UProgress :value="completed" class="mt-4" /><div class="inline justify-between mt-1"><span class="muted">步骤完成度</span><b>{{ completed }}%</b></div>
         </article>
         <aside class="grid right">
-          <article class="panel p-4"><h3>隔离点与锁定</h3><div v-for="point in selected.isolationPoints" :key="point.id" class="point"><span><b>{{ point.label }}</b><small>{{ point.device }} · {{ point.type }}</small></span><UBadge :color="point.state === '已隔离' ? 'green' : 'amber'" variant="subtle">{{ point.state }}</UBadge></div></article>
+          <article class="panel p-4"><h3>隔离点与锁定</h3><div v-for="point in selected.isolationPoints" :key="point.id" class="point"><span><b>{{ point.label }}</b><small>{{ point.device }} · {{ point.type }}</small></span><UBadge :color="point.state === '已隔离' ? 'green' : point.state === '已恢复' ? 'gray' : 'amber'" variant="subtle">{{ point.state }}</UBadge><UButton size="xs" variant="ghost" :icon="point.state === '已隔离' ? 'i-heroicons-lock-open' : 'i-heroicons-lock-closed'" @click="store.toggleIsolation(selected.id, point.id)">{{ point.state === '已隔离' ? '解除隔离' : '执行隔离' }}</UButton></div>
+            <UAlert v-if="selected.dispatchSignals?.isolationReleased?.length" class="mt-3" color="amber" variant="soft" title="调度端已解除隔离" :description="selected.dispatchSignals.isolationReleased.map((r) => `${r.at} ${r.by} 解除「${r.label}」`).join('；')" />
+          </article>
           <article class="panel p-4"><h3>流程操作</h3><p class="muted">推进前系统重新检查隔离冲突、跨班组重叠与未完成交接。</p><UButton block color="primary" icon="i-heroicons-arrow-right-circle" @click="store.advancePermit(selected.id)">推进到下一状态</UButton><UButton block class="mt-2" color="gray" variant="outline" icon="i-heroicons-arrow-uturn-left">退回补件</UButton><UButton block class="mt-2" color="red" variant="soft" icon="i-heroicons-exclamation-triangle">申请紧急暂停</UButton></article>
         </aside>
       </section>
@@ -52,6 +75,6 @@ function createPermit() {
 </template>
 
 <style scoped>
-.head{display:flex;justify-content:space-between;gap:16px;margin-bottom:18px}.head h1{margin:3px 0 7px}.head p{margin:0}.eyebrow{font-size:12px;color:#2563eb;font-weight:700}.permit-layout{display:grid;grid-template-columns:300px minmax(0,1fr);gap:16px}.permit-list{padding:8px;height:fit-content}.permit-list button{width:100%;display:flex;justify-content:space-between;align-items:center;gap:8px;padding:13px 11px;border:0;background:transparent;border-radius:7px;text-align:left;color:inherit;cursor:pointer}.permit-list button:hover,.permit-list button.active{background:#eff6ff}.permit-list b,.permit-list small{display:block}.permit-list small{color:#667085;margin-top:4px;font-size:12px}.detail-grid{grid-template-columns:minmax(0,1.5fr) minmax(280px,.65fr);gap:16px}.right{height:fit-content;gap:14px}.detail-head{display:flex;justify-content:space-between;gap:10px;margin-bottom:16px}.detail-head h2{margin:4px 0}.detail-head p{margin:0;color:#667085}.flow{display:grid;grid-template-columns:repeat(5,1fr);margin:20px 0}.flow>div{position:relative;text-align:center;color:#94a3b8}.flow>div:after{content:"";position:absolute;left:55%;right:-45%;top:13px;height:2px;background:#e2e8f0}.flow>div:last-child:after{display:none}.flow i{position:relative;z-index:1;display:grid;place-items:center;width:28px;height:28px;margin:auto;border-radius:50%;background:#e2e8f0;font-style:normal;font-size:12px}.flow span{display:block;font-size:12px;margin-top:5px}.flow .done{color:#2563eb}.flow .done i{background:#2563eb;color:#fff}.flow .done:after{background:#2563eb}.panel h3{font-size:15px;margin:18px 0 10px}.step{display:flex;align-items:flex-start;gap:10px;padding:12px 0;border-bottom:1px solid #edf0f5}.step div{flex:1}.step small{display:block;color:#667085;margin-top:4px}.step .completed{text-decoration:line-through;color:#667085}.point{display:flex;justify-content:space-between;padding:11px 0;border-bottom:1px solid #edf0f5}.point b,.point small{display:block}.point small{color:#667085;margin-top:4px}.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:18px 0}.mt-2{margin-top:8px}
+.head{display:flex;justify-content:space-between;gap:16px;margin-bottom:18px}.head h1{margin:3px 0 7px}.head p{margin:0}.eyebrow{font-size:12px;color:#2563eb;font-weight:700}.permit-layout{display:grid;grid-template-columns:300px minmax(0,1fr);gap:16px}.permit-list{padding:8px;height:fit-content}.permit-list button{width:100%;display:flex;justify-content:space-between;align-items:center;gap:8px;padding:13px 11px;border:0;background:transparent;border-radius:7px;text-align:left;color:inherit;cursor:pointer}.permit-list button:hover,.permit-list button.active{background:#eff6ff}.permit-list b,.permit-list small{display:block}.permit-list small{color:#667085;margin-top:4px;font-size:12px}.detail-grid{grid-template-columns:minmax(0,1.5fr) minmax(280px,.65fr);gap:16px}.right{height:fit-content;gap:14px}.detail-head{display:flex;justify-content:space-between;gap:10px;margin-bottom:16px}.detail-head h2{margin:4px 0}.detail-head p{margin:0;color:#667085}.flow{display:grid;grid-template-columns:repeat(5,1fr);margin:20px 0}.flow>div{position:relative;text-align:center;color:#94a3b8}.flow>div:after{content:"";position:absolute;left:55%;right:-45%;top:13px;height:2px;background:#e2e8f0}.flow>div:last-child:after{display:none}.flow i{position:relative;z-index:1;display:grid;place-items:center;width:28px;height:28px;margin:auto;border-radius:50%;background:#e2e8f0;font-style:normal;font-size:12px}.flow span{display:block;font-size:12px;margin-top:5px}.flow .done{color:#2563eb}.flow .done i{background:#2563eb;color:#fff}.flow .done:after{background:#2563eb}.panel h3{font-size:15px;margin:18px 0 10px}.step{display:flex;align-items:flex-start;gap:10px;padding:12px 0;border-bottom:1px solid #edf0f5}.step div{flex:1}.step small{display:block;color:#667085;margin-top:4px}.step .completed{text-decoration:line-through;color:#667085}.point{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:11px 0;border-bottom:1px solid #edf0f5}.point b,.point small{display:block}.point small{color:#667085;margin-top:4px}.legacy-idx{font-size:11px;color:#475569;background:#f1f5f9;padding:2px 6px;border-radius:5px}.reconfirm-input{width:220px}.mt-3{margin-top:12px}.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:18px 0}.mt-2{margin-top:8px}
 @media(max-width:980px){.permit-layout{grid-template-columns:1fr}.permit-list{display:flex;overflow:auto}.permit-list button{min-width:230px}.detail-grid{grid-template-columns:1fr}}@media(max-width:620px){.head{flex-direction:column}.form-grid{grid-template-columns:1fr}}
 </style>
